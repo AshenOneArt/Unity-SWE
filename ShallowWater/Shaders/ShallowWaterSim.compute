@@ -1,0 +1,471 @@
+// ------------------------------------------------------------------
+// 内核（Kernel）声明
+// ------------------------------------------------------------------
+#pragma kernel InitWater           // 初始化内核
+#pragma kernel Advect              // 平流（输运）内核
+#pragma kernel SolveDivergence     // 求解散度内核（更新水高）
+#pragma kernel SolvePressure       // 求解压力内核（更新速度）
+#pragma kernel ApplyBoundary       // 应用边界条件内核
+#pragma kernel InjectWater         // 注水内核
+#pragma kernel GaussianBlurHorizontal // 高斯模糊水平通道内核
+#pragma kernel GaussianBlurVertical   // 高斯模糊垂直通道内核
+
+// ------------------------------------------------------------------
+// 纹理与缓冲定义
+// ------------------------------------------------------------------
+// 输入纹理（只读）
+Texture2D<float> H_read;            // 水面总高度 (η)
+Texture2D<float2> Velocity_read;    // 水平速度 (u, v)
+Texture2D<float> B_read;            // 地形（河床）高度 (b)
+RWTexture2D<float> B_write;         // 用于写入新的地形高度 (b)
+
+// 输出纹理（可读写）
+RWTexture2D<float> H_write;         // 用于写入新的水面高度
+RWTexture2D<float2> Velocity_write; // 用于写入新的速度
+
+// ------------------------------------------------------------------
+// 全局变量 (Uniforms)
+// ------------------------------------------------------------------
+int2 size;                          // 模拟网格的尺寸 (例如 256x256)
+float dt;                           // 时间步长 (delta time)
+float dx;                           // 网格单元尺寸
+float g;                            // 重力加速度
+float2 center;                      // 初始波纹的中心
+float slopeHeight;                  // 初始海平面高度
+float waveRadius;                   // 初始波纹半径
+float maxHeight;                    // 初始波纹最大高度
+#define dy dx                       // 定义 dy = dx，确保网格是正方形
+#define EPS 0.0001
+
+// 水源定义
+struct WaterSourceData
+{
+    float2 position;
+    float radius;
+    float injectionRate;
+};
+StructuredBuffer<WaterSourceData> waterSources; // 水源数据缓冲
+int waterSourceCount;                       // 水源数量
+
+// 采样器状态
+SamplerState my_Linear_Clamp_sampler; // 使用线性插值和边缘钳制模式的采样器
+
+// 高斯模糊相关
+RWTexture2D<float> B_temp; // 临时纹理用于高斯模糊
+
+[numthreads(8,8,1)]
+void InitWater(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+
+    float2 dist_vec = coords - center;
+    float dist = length(dist_vec);
+    float h = 0;
+    if (dist < waveRadius)
+    {
+        h += maxHeight * (1.0 - dist / waveRadius);
+        //B_write[coords] = 10 * (1.0 - dist / waveRadius);
+    }
+
+    if(coords.y < size.y * 0.0625 && coords.x < size.x - size.x * 0.125  && coords.x > size.x * 0.125)
+    {
+        h = slopeHeight * coords.y;
+        
+    }
+    
+    H_write[coords] = max(B_read[coords], h);
+    
+    // --- 初始化速度场为零 ---
+    Velocity_write[coords] = float2(0.0, 0.0);
+}
+
+// 获取用于插值的4个邻近点的值和它们的边界
+void GetNeighborhood_float2(Texture2D<float2> Tex,float2 uv_coord, out float2 v00, out float2 v10, out float2 v01, out float2 v11, out float2 v_min, out float2 v_max)
+{
+    // 将 UV 坐标转换到像素坐标
+    float2 pixel_coord = uv_coord * (float2)size;
+    
+    // 找到左下角的整数像素坐标
+    float2 floor_coord = floor(pixel_coord - 0.5);
+    
+    // 获取4个邻近点的像素值
+    v00 = Tex[int2(floor_coord.x, floor_coord.y)];
+    v10 = Tex[int2(floor_coord.x + 1, floor_coord.y)];
+    v01 = Tex[int2(floor_coord.x, floor_coord.y + 1)];
+    v11 = Tex[int2(floor_coord.x + 1, floor_coord.y + 1)];
+    
+    // 计算这4个点的速度分量的最小/最大值，用于后续的回退检查
+    v_min = min(min(v00, v10), min(v01, v11));
+    v_max = max(max(v00, v10), max(v01, v11));
+}
+// 获取用于插值的4个邻近点的值和它们的边界
+void GetNeighborhood_float(Texture2D<float> Tex,float2 uv_coord, out float f00, out float f10, out float f01, out float f11, out float f_min, out float f_max)
+{
+    // 将 UV 坐标转换到像素坐标
+    float2 pixel_coord = uv_coord * (float2)size;
+    
+    // 找到左下角的整数像素坐标
+    float2 floor_coord = floor(pixel_coord - 0.5);
+    
+    // 获取4个邻近点的像素值
+    f00 = Tex[int2(floor_coord.x, floor_coord.y)] - B_read[int2(floor_coord.x, floor_coord.y)];
+    f10 = Tex[int2(floor_coord.x + 1, floor_coord.y)] - B_read[int2(floor_coord.x + 1, floor_coord.y)];
+    f01 = Tex[int2(floor_coord.x, floor_coord.y + 1)] - B_read[int2(floor_coord.x, floor_coord.y + 1)];
+    f11 = Tex[int2(floor_coord.x + 1, floor_coord.y + 1)] - B_read[int2(floor_coord.x + 1, floor_coord.y + 1)];
+    
+    // 计算这4个点的速度分量的最小/最大值，用于后续的回退检查
+    f_min = min(min(f00, f10), min(f01, f11));
+    f_max = max(max(f00, f10), max(f01, f11));
+}
+[numthreads(8,8,1)]
+void Advect(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    
+    // 边界处理
+    if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
+    {
+        Velocity_write[coords] = Velocity_read[coords];
+        return;
+    }
+
+    float2 cell_size = float2(dx, dy);
+    float2 arrival_pos = (float2)coords + 0.5f;
+    float2 uv_pos = arrival_pos / (float2)size;
+
+    // 1. 第一次半拉格朗日回溯 (预测步骤 Predictor)
+    // 这会得到一个出发点，以及一个简单的平流结果（作为备用方案）
+    float2 vel_vel = Velocity_read[coords];
+
+    // 计算上一时间步的粒子位置 (出发点)
+    float2 pos_vel_pre = uv_pos - vel_vel * dt / (float2)size;
+
+    //获取插值邻域和速度边界 ---
+    float2 v00, v10, v01, v11, vel_min, vel_max;
+    GetNeighborhood_float2(Velocity_read,pos_vel_pre, v00, v10, v01, v11, vel_min, vel_max);
+
+    // 1. 半拉格朗日法的结果
+    float2 vel_sl = Velocity_read.SampleLevel(my_Linear_Clamp_sampler, pos_vel_pre, 0);
+    // 2. 修正麦克马克法的结果
+    // a. 预测步：结果就是半拉格朗日的结果 (vel_sl_result)
+    // b. 校正步：
+    //    从出发点，用预测的速度向前走一步，得到一个中间位置
+    float2 uv_mid = pos_vel_pre + vel_sl * dt / (float2)size;
+    float2 error = uv_pos - uv_mid;
+    //    将误差的一半加回到预测值上，得到修正后的速度
+    float2 vel_mac = vel_sl + 0.5 * error * (float2)size / dt;
+    //执行回退检查与最终赋值 ---
+    // 检查麦克马克的结果是否超出了其插值邻域的物理边界
+    bool is_in_bounds = all(vel_mac >= vel_min) && all(vel_mac <= vel_max);
+    float2 final_velocity = is_in_bounds ? vel_mac : vel_sl;
+
+
+    Velocity_write[coords] = final_velocity;     
+    //Velocity_write[coords] = Velocity_read[coords];  
+       
+}
+
+#define USE_FiniteDifferenceGrid
+#define OvershootingReduction
+
+[numthreads(8,8,1)]
+void SolveDivergence(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    // 忽略边界一圈的像素，因为计算需要邻居信息
+    if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
+    {
+        H_write[coords] = H_read[coords];
+        return;
+    }
+
+    float h_center = H_read[coords] - B_read[coords];
+    float2 vel_center = Velocity_read[coords];
+
+    float h_right = H_read[coords + int2(1, 0)] - B_read[coords + int2(1, 0)];
+    float2 vel_right = Velocity_read[coords + int2(1, 0)];
+    
+    float h_left = H_read[coords - int2(1, 0)] - B_read[coords - int2(1, 0)];
+    float2 vel_left = Velocity_read[coords - int2(1, 0)];    
+
+    float h_top = H_read[coords + int2(0, 1)] - B_read[coords + int2(0, 1)];
+    float2 vel_top = Velocity_read[coords + int2(0, 1)];    
+
+    float h_down = H_read[coords - int2(0, 1)] - B_read[coords - int2(0, 1)];
+    float2 vel_down = Velocity_read[coords - int2(0, 1)];
+
+    //网格差分
+    float fxR = vel_center.x;
+    float fxL = vel_left.x;    	
+    float fyT = vel_center.y; 
+    float fyB = vel_down.y;
+
+    float hR = (fxR <= 0) ? h_right : h_center;
+    float hL = (fxL >  0) ? h_left  : h_center;    
+    float hT = (fyT <= 0) ? h_top   : h_center;
+    float hB = (fyB >  0) ? h_down  : h_center;
+
+    float beta = 2.0;
+    float hAvgMax = beta * dx / ( g * (dt) );
+    float hAdj = max( 0.0, (hL+hR+hT+hB)/4.0 - hAvgMax );
+
+    hR -= hAdj;
+    hL -= hAdj;    
+    hT -= hAdj;
+    hB -= hAdj;
+
+    float dH = (hR * fxR - hL * fxL) / dx + (hT * fyT - hB * fyB) / dy;
+    float newH = max(0.0, h_center - dH * dt);
+
+    float edgeLimit = dx * 2;
+    float a_edge = 0.25;  
+    H_write[coords] = newH + B_read[coords];
+}
+
+[numthreads(8,8,1)]
+void SolvePressure(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    // 忽略边界
+    if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
+    {
+        Velocity_write[coords] = Velocity_read[coords];
+        return;
+    }
+    float2 vel_center = Velocity_read[coords];
+    
+    float b_center = B_read[coords];
+    float b_right = B_read[coords + int2(1, 0)];
+    float b_top = B_read[coords + int2(0, 1)];
+
+    float eta_center = H_read[coords];
+    float eta_right = H_read[coords + int2(1, 0)];
+    float eta_top = H_read[coords + int2(0, 1)];
+
+    float h_center = eta_center - b_center;
+    float h_right = eta_right - b_right;
+    float h_top = eta_top - b_top;
+
+    float grad_eta_x = (eta_right - eta_center) / dx * g;
+    float grad_eta_y = (eta_top - eta_center) / dy * g;
+
+    float2 new_velocity = vel_center - float2(grad_eta_x, grad_eta_y) * dt;
+    float l = length(new_velocity);
+    if(l > 0)
+    {
+        float alpha = 0.5;
+		new_velocity /= l;
+		l = min( l, dx / (dt) * alpha );
+		new_velocity *= l;
+    }
+    if((h_center <= EPS) && (b_center > eta_right) || (h_right <= EPS) && (b_right > eta_center))
+    {
+        new_velocity.x = 0;
+    }
+    if((h_center <= EPS) && (b_center > eta_top) || (h_top <= EPS) && (b_top > eta_center))
+    {
+        new_velocity.y = 0;
+    }
+
+    Velocity_write[coords] = new_velocity;
+}
+
+[numthreads(8,8,1)]
+void ApplyBoundary(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    if (coords.x >= size.x|| coords.y >= size.y) return;
+
+    // --- 为同位网格应用反射边界条件 ---
+    //交错网格，上右存在中心，左存左边，下存下边，加上goast边界，因此上右-2
+    float h = H_read[coords];
+    float2 uv = Velocity_read[coords];
+
+    if (coords.x <= 0) {
+        uv.x = 0;
+    }
+    if (coords.x >= size.x - 2) {
+        uv.x = 0;
+    }
+    if (coords.y <= 0) {
+        uv.y = 0;
+    }
+    if (coords.y >= size.y - 2) 
+    {
+        uv.y = 0;
+    }
+
+
+    H_write[coords] = H_read[coords];
+    Velocity_write[coords] = uv;
+
+}
+
+[numthreads(8,8,1)]
+void InjectWater(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    if (coords.x >= size.x - 1 || coords.y >= size.y - 1) return;
+
+    float currentH = 0; // 从上一步的输出读取
+
+    for (int s = 0; s < waterSourceCount; s++)
+    {
+        float distSq = pow(coords.x - waterSources[s].position.x, 2) + pow(coords.y - waterSources[s].position.y, 2);
+        float radiusSq = waterSources[s].radius * waterSources[s].radius;
+        if (distSq < radiusSq)
+        {
+            float falloff = 1.0 - sqrt(distSq) / waterSources[s].radius;
+            currentH += waterSources[s].injectionRate * dt * falloff;
+        }
+    }
+    
+    H_write[coords] += currentH;
+}
+
+// 高斯模糊 - 水平通道 (使用组内共享内存优化)
+
+#define KERNEL_RADIUS 1 // 高斯核半径 (5x5核，所以半径是2)
+#define KERNEL_SIZE (KERNEL_RADIUS * 2 + 1) // 完整的核大小 = 5
+#define GROUP_SIZE_X 8 // 线程组 X 维度大小，需要和下面的 numthreads 匹配
+#define GROUP_SIZE_Y 8 // 线程组 Y 维度大小
+
+// 我们需要加载的数据块宽度 = 线程组宽度 + 左右两边的额外数据
+// 例如，最左边的线程(x=0)需要读取到左边2个像素，最右边的线程(x=7)需要读取到右边2个像素。
+// 所以总共需要 2(左) + 8(中) + 2(右) = 12 个像素的宽度。
+#define SHARED_DATA_WIDTH (GROUP_SIZE_X + KERNEL_RADIUS * 2)
+
+// 定义共享内存数组
+// 每个线程组 (8x8) 会有自己的一块 8x12 大小的共享内存
+groupshared float shared_H_Horizontal[GROUP_SIZE_Y][SHARED_DATA_WIDTH];
+//static const float weights[5] = {0.05,0.1, 0.7, 0.1,0.05};
+static const float weights[3] = {0.05, 0.9, 0.05};
+//static const float weights[5] = {0,0, 1, 0,0};
+[numthreads(GROUP_SIZE_X, GROUP_SIZE_Y, 1)]
+void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+{
+    // --- 1. 加载数据到共享内存 ---
+    
+    // 计算当前线程在线程组内的局部坐标 (0-7, 0-7)
+    int2 localCoords = groupThreadID.xy;
+    // 计算当前线程要处理的像素的全局坐标
+    int2 globalCoords = dispatchThreadID.xy;
+
+    // 计算当前线程组负责加载数据块的左上角全局坐标
+    int startX = groupID.x * GROUP_SIZE_X - KERNEL_RADIUS;
+    int startY = groupID.y * GROUP_SIZE_Y;
+    
+    // 每个线程负责从全局内存加载一个像素到共享内存中
+    // 我们需要加载一个 12x8 的数据块，但只有 8x8=64 个线程。
+    // 所以我们让一部分线程加载两次来填满整个共享内存块。
+    // 这是一个常见的填充策略。
+    int loadX1 = startX + localCoords.x;
+    int loadX2 = startX + localCoords.x + GROUP_SIZE_X;
+    int loadY = startY + localCoords.y;
+
+    // 加载第一部分 (前8列)
+    if (loadX1 >= 0 && loadX1 < size.x && loadY < size.y) {
+        shared_H_Horizontal[localCoords.y][localCoords.x] = H_read[int2(loadX1, loadY)];
+    } else {
+        shared_H_Horizontal[localCoords.y][localCoords.x] = 0.0; // 越界区域填0
+    }
+
+    // 加载第二部分 (后4列，由前4列的线程负责)
+    if (localCoords.x < KERNEL_RADIUS * 2) {
+        if (loadX2 >= 0 && loadX2 < size.x && loadY < size.y) {
+            shared_H_Horizontal[localCoords.y][localCoords.x + GROUP_SIZE_X] = H_read[int2(loadX2, loadY)];
+        } else {
+            shared_H_Horizontal[localCoords.y][localCoords.x + GROUP_SIZE_X] = 0.0; // 越界区域填0
+        }
+    }
+    
+    // --- 2. 同步线程 ---
+    
+    // 设置一个内存屏障，确保组内所有线程都完成了对共享内存的写入操作后，
+    // 才开始下面的读取和计算。这是至关重要的一步！
+    GroupMemoryBarrierWithGroupSync();
+
+    // --- 3. 从共享内存读取数据并进行计算 ---
+    
+    // 检查当前线程处理的像素是否在图像范围内
+    if (globalCoords.x < size.x && globalCoords.y < size.y)
+    {
+        float result = 0.0;
+        
+        // 5x5 高斯核的权重 (sigma ≈ 1.0)              
+        float weightSum = 0.0;
+        // 计算时，我们从共享内存中取数据。
+        // localCoords.x 是线程在 0-7 范围内的索引。
+        // 但我们的数据块包含了左边2个像素的 "halo" 区域。
+        // 所以线程 localCoords.x 对应的中心像素位于共享内存的 localCoords.x + KERNEL_RADIUS 的位置。
+        [unroll]
+        for (int i = 0; i < KERNEL_SIZE; i++)
+        {
+            int offset = i - KERNEL_RADIUS; // 偏移量: -2, -1, 0, 1, 2
+            result += shared_H_Horizontal[localCoords.y][localCoords.x + KERNEL_RADIUS + offset] * weights[i];
+        }
+        
+        H_write[globalCoords] = result;
+        //H_write[globalCoords] = H_read[globalCoords];
+    }
+}
+
+#define SHARED_DATA_HEIGHT (GROUP_SIZE_Y + KERNEL_RADIUS * 2)
+
+// 定义共享内存数组
+// 形状变为 12x8 (高x宽)
+groupshared float shared_H_Vertical[SHARED_DATA_HEIGHT][GROUP_SIZE_X];
+
+[numthreads(GROUP_SIZE_X, GROUP_SIZE_Y, 1)]
+void GaussianBlurVertical(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
+{
+    // --- 1. 加载数据到共享内存 ---
+    
+    int2 localCoords = groupThreadID.xy;
+    int2 globalCoords = dispatchThreadID.xy;
+
+    // 计算当前线程组负责加载数据块的左上角全局坐标
+    int startX = groupID.x * GROUP_SIZE_X;
+    int startY = groupID.y * GROUP_SIZE_Y - KERNEL_RADIUS;
+    
+    // 每个线程负责从全局内存加载一个像素到共享内存中
+    // 这次是让 Y 坐标为 0-3 的线程去加载额外的底部数据
+    int loadX = startX + localCoords.x;
+    int loadY1 = startY + localCoords.y;
+    int loadY2 = startY + localCoords.y + GROUP_SIZE_Y;
+
+    // 加载第一部分 (前8行)
+    if (loadX < size.x && loadY1 >= 0 && loadY1 < size.y) {
+        shared_H_Vertical[localCoords.y][localCoords.x] = H_write[int2(loadX, loadY1)];
+    } else {
+        shared_H_Vertical[localCoords.y][localCoords.x] = 0.0;
+    }
+
+    // 加载第二部分 (后4行，由前4行的线程负责)
+    if (localCoords.y < KERNEL_RADIUS * 2) {
+        if (loadX < size.x && loadY2 >= 0 && loadY2 < size.y) {
+            shared_H_Vertical[localCoords.y + GROUP_SIZE_Y][localCoords.x] = H_write[int2(loadX, loadY2)];
+        } else {
+            shared_H_Vertical[localCoords.y + GROUP_SIZE_Y][localCoords.x] = 0.0;
+        }
+    }
+    
+    // --- 2. 同步线程 ---
+    GroupMemoryBarrierWithGroupSync();
+
+    // --- 3. 从共享内存读取数据并进行计算 ---
+    if (globalCoords.x < size.x && globalCoords.y < size.y)
+    {
+        float result = 0.0;    
+        // 计算时，从共享内存中沿 Y 轴取数据
+        // 线程 localCoords.y 对应的中心像素位于共享内存的 localCoords.y + KERNEL_RADIUS 的位置
+        [unroll]
+        for (int i = 0; i < KERNEL_SIZE; i++)
+        {
+            int offset = i - KERNEL_RADIUS; // 偏移量: -2, -1, 0, 1, 2
+            result += shared_H_Vertical[localCoords.y + KERNEL_RADIUS + offset][localCoords.x] * weights[i];
+        }
+        
+        H_write[globalCoords] = result;
+    }
+}
