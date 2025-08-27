@@ -24,7 +24,8 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Shader Graphs_McWater_Graph
-  m_Shader: {fileID: -6465566751694194690, guid: 72c2aa562a6caa647bfe784970f77ac4, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: 72c2aa562a6caa647bfe784970f77ac4,
+    type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
@@ -122,7 +123,7 @@ Material:
     - _EnableSimu: 1
     - _ExcludeFromTUAndAA: 0
     - _Float: 0.76
-    - _Foam_1: 0.5
+    - _Foam_1: 4
     - _LightColorIntensity: 0.01
     - _LightMM: 0
     - _MaxDistance: 10

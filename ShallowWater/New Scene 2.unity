@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 3882.061, g: 3497.0884, b: 3594.8872, a: 1}
+  m_IndirectSpecularColor: {r: 3892.3364, g: 3509.0747, b: 3626.8052, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -721,8 +721,8 @@ MonoBehaviour:
   MeshVertexSize: 32
   SimulationSize: 512
   loopCount: 2
-  dx: 0.5
-  dt: 0.05
+  dx: 1
+  dt: 0.1
   g: 9.81
   SceneDepthRTSize: 512
   waveRadius: 60
@@ -980,7 +980,8 @@ MonoBehaviour:
         layerMask:
           serializedVersion: 2
           m_Bits: 0
-        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e, type: 2}
+        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e,
+          type: 2}
 --- !u!4 &1286623295
 Transform:
   m_ObjectHideFlags: 0

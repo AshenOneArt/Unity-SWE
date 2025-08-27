@@ -74,6 +74,14 @@ void GetNeighborhood_float2(Texture2D<float2> Tex,float2 uv_coord, out float2 v0
     v_max = max(max(v00, v10), max(v01, v11));
 }
 
+float BlueNoiseSample(int2 p)
+{
+    // 回退：无贴图时用轻量哈希（不是蓝噪，但能用）
+    uint n = asuint(p.x*1973 + p.y*9277);
+    n ^= (n<<13); n ^= (n>>17); n ^= (n<<5);
+    return (n & 0x00FFFFFF) / 16777215.0;  // [0,1]
+}
+
 [numthreads(8,8,1)]
 void InitWater(uint3 id : SV_DispatchThreadID)
 {
@@ -125,7 +133,7 @@ void Advect(uint3 id : SV_DispatchThreadID)
 
     // 计算上一时间步的粒子位置 (出发点)
     float2 pos_vel_pre = uv_pos - vel_vel * dt / (float2)size;
-    float2 pos_vel_Fast = uv_pos - vel_vel * dt * 2 / (float2)size;
+    float2 pos_vel_Fast = uv_pos - vel_vel * dt * 1 / (float2)size;
 
     //获取插值邻域和速度边界 ---
     float2 v00, v10, v01, v11, vel_min, vel_max;
@@ -209,18 +217,19 @@ void SolveDivergence(uint3 id : SV_DispatchThreadID)
     float x = maxAbs(eta_right - eta_center, eta_center - eta_left)/dx;
     float y = maxAbs(eta_top - eta_center, eta_center - eta_bottom)/dy;
 
-    float aminSplash = 0.4;
-    float vminSplash = 0.1;
-    float lminSplash = -0.4;
+    float aminSplash = 0.6;
+    float vminSplash = 0.4;
+    float lminSplash = -0.3;
     float foam_result = Foam_read[coords];
     bool isSplash0 = sqrt(x*x + y*y) > aminSplash * g * dt/dx;
     bool isSplash1 = (newH + B_read[coords])- H_read[coords] > vminSplash * dt;
     bool isSplash2 = (eta_right + eta_left + eta_top + eta_bottom - 4*eta_center)/dt*dt < lminSplash;
 
-    if(isSplash2 || isSplash1 || isSplash0)
+    if(isSplash0 || isSplash1 || isSplash2)
     {
-        foam_result += 1;
+        foam_result += 0.1;        
     }
+    
 
 
     float b_center = B_read[coords];
@@ -228,7 +237,7 @@ void SolveDivergence(uint3 id : SV_DispatchThreadID)
     float b_left = B_read[coords - int2(1, 0)];
     float b_top = B_read[coords + int2(0, 1)];
     float b_bottom = B_read[coords - int2(0, 1)];
-    Foam_write[coords] = foam_result * 0.995;
+    Foam_write[coords] = foam_result * 0.993;
 }
 
 [numthreads(8,8,1)]

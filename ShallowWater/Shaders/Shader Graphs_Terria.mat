@@ -24,7 +24,8 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Shader Graphs_Terria
-  m_Shader: {fileID: -6465566751694194690, guid: 09fbb72f179c8454ea055f83af5af5f7, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: 09fbb72f179c8454ea055f83af5af5f7,
+    type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
@@ -96,7 +97,7 @@ Material:
     - _EnableBlendModePreserveSpecularLighting: 1
     - _EnableFogOnTransparent: 1
     - _ExcludeFromTUAndAA: 0
-    - _H: 10
+    - _H: 15
     - _OpaqueCullMode: 2
     - _RayTracing: 0
     - _ReceivesSSR: 1
