@@ -980,7 +980,8 @@ MonoBehaviour:
         layerMask:
           serializedVersion: 2
           m_Bits: 0
-        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e, type: 2}
+        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e,
+          type: 2}
 --- !u!4 &1286623295
 Transform:
   m_ObjectHideFlags: 0
@@ -1116,7 +1117,7 @@ GameObject:
   - component: {fileID: 1503271604}
   - component: {fileID: 1503271603}
   m_Layer: 4
-  m_Name: Cube (1)
+  m_Name: injectWater
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
