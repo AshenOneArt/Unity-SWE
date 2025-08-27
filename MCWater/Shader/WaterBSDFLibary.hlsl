@@ -45,7 +45,7 @@ void WaterPostEvaluateBSDF(WaterLightLoopData waterLightLoopData,LightLoopContex
         float dd = pow(expFactor, float(count+waterLightLoopData.Dither*0.1)/float(WATER_SAMPLE_COUNT)) * log(expFactor) / float(WATER_SAMPLE_COUNT)/(expFactor-1.0);
         
         float3 ambientAbsorbance = exp(-waterLightLoopData.WaterAbsorption * (waterLightLoopData.NormalizedAmbientDepth * d));
-        float3 indirectLighting = builtinData.bakeDiffuseLighting * ambientAbsorbance * _AmbientLC.rgb * 0.25;//贡献四分之一的间接光照
+        float3 indirectLighting = builtinData.bakeDiffuseLighting * ambientAbsorbance * _AmbientLC.rgb * 0.8;//贡献一半的间接光照
         float3 volumeCoeff = exp(-waterLightLoopData.WaterAbsorption * dd * waterLightLoopData.NormalizedRayLength);        
         TotalIndirectLighting += (indirectLighting - indirectLighting * volumeCoeff)/waterLightLoopData.WaterAbsorption * absorbance;
         absorbance *= volumeCoeff;

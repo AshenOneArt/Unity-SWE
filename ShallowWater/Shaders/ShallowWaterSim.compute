@@ -1,14 +1,15 @@
 // ------------------------------------------------------------------
 // 内核（Kernel）声明
 // ------------------------------------------------------------------
-#pragma kernel InitWater           // 初始化内核
-#pragma kernel Advect              // 平流（输运）内核
-#pragma kernel SolveDivergence     // 求解散度内核（更新水高）
-#pragma kernel SolvePressure       // 求解压力内核（更新速度）
-#pragma kernel ApplyBoundary       // 应用边界条件内核
-#pragma kernel InjectWater         // 注水内核
-#pragma kernel GaussianBlurHorizontal // 高斯模糊水平通道内核
-#pragma kernel GaussianBlurVertical   // 高斯模糊垂直通道内核
+#pragma kernel InitWater                // 初始化内核
+#pragma kernel Advect                   // 平流（输运）内核
+#pragma kernel SolveDivergence          // 求解散度内核（更新水高）
+#pragma kernel SolvePressure            // 求解压力内核（更新速度）
+#pragma kernel ApplyBoundary            // 应用边界条件内核
+#pragma kernel InjectWater              // 注水内核
+#pragma kernel GaussianBlurHorizontal   // 高斯模糊水平通道内核
+#pragma kernel GaussianBlurVertical     // 高斯模糊垂直通道内核
+#pragma kernel CalculateFoam            // 泡沫模拟内核
 
 // ------------------------------------------------------------------
 // 纹理与缓冲定义
@@ -17,11 +18,13 @@
 Texture2D<float> H_read;            // 水面总高度 (η)
 Texture2D<float2> Velocity_read;    // 水平速度 (u, v)
 Texture2D<float> B_read;            // 地形（河床）高度 (b)
-RWTexture2D<float> B_write;         // 用于写入新的地形高度 (b)
+Texture2D<float> Foam_read;         // 泡沫
 
 // 输出纹理（可读写）
 RWTexture2D<float> H_write;         // 用于写入新的水面高度
 RWTexture2D<float2> Velocity_write; // 用于写入新的速度
+RWTexture2D<float> B_write;         // 用于写入新的地形高度 (b)
+RWTexture2D<float> Foam_write;      // 用于写入新的泡沫
 
 // ------------------------------------------------------------------
 // 全局变量 (Uniforms)
@@ -36,6 +39,7 @@ float waveRadius;                   // 初始波纹半径
 float maxHeight;                    // 初始波纹最大高度
 #define dy dx                       // 定义 dy = dx，确保网格是正方形
 #define EPS 0.0001
+#define maxAbs(a,b) (abs(a) > abs(b) ? a : b)
 
 // 水源定义
 struct WaterSourceData
@@ -49,35 +53,6 @@ int waterSourceCount;                       // 水源数量
 
 // 采样器状态
 SamplerState my_Linear_Clamp_sampler; // 使用线性插值和边缘钳制模式的采样器
-
-// 高斯模糊相关
-RWTexture2D<float> B_temp; // 临时纹理用于高斯模糊
-
-[numthreads(8,8,1)]
-void InitWater(uint3 id : SV_DispatchThreadID)
-{
-    int2 coords = id.xy;
-
-    float2 dist_vec = coords - center;
-    float dist = length(dist_vec);
-    float h = 0;
-    if (dist < waveRadius)
-    {
-        h += maxHeight * (1.0 - dist / waveRadius);
-        //B_write[coords] = 10 * (1.0 - dist / waveRadius);
-    }
-
-    if(coords.y < size.y * 0.0625 && coords.x < size.x - size.x * 0.125  && coords.x > size.x * 0.125)
-    {
-        h = slopeHeight * coords.y;
-        
-    }
-    
-    H_write[coords] = max(B_read[coords], h);
-    
-    // --- 初始化速度场为零 ---
-    Velocity_write[coords] = float2(0.0, 0.0);
-}
 
 // 获取用于插值的4个邻近点的值和它们的边界
 void GetNeighborhood_float2(Texture2D<float2> Tex,float2 uv_coord, out float2 v00, out float2 v10, out float2 v01, out float2 v11, out float2 v_min, out float2 v_max)
@@ -98,25 +73,35 @@ void GetNeighborhood_float2(Texture2D<float2> Tex,float2 uv_coord, out float2 v0
     v_min = min(min(v00, v10), min(v01, v11));
     v_max = max(max(v00, v10), max(v01, v11));
 }
-// 获取用于插值的4个邻近点的值和它们的边界
-void GetNeighborhood_float(Texture2D<float> Tex,float2 uv_coord, out float f00, out float f10, out float f01, out float f11, out float f_min, out float f_max)
+
+[numthreads(8,8,1)]
+void InitWater(uint3 id : SV_DispatchThreadID)
 {
-    // 将 UV 坐标转换到像素坐标
-    float2 pixel_coord = uv_coord * (float2)size;
-    
-    // 找到左下角的整数像素坐标
-    float2 floor_coord = floor(pixel_coord - 0.5);
-    
-    // 获取4个邻近点的像素值
-    f00 = Tex[int2(floor_coord.x, floor_coord.y)] - B_read[int2(floor_coord.x, floor_coord.y)];
-    f10 = Tex[int2(floor_coord.x + 1, floor_coord.y)] - B_read[int2(floor_coord.x + 1, floor_coord.y)];
-    f01 = Tex[int2(floor_coord.x, floor_coord.y + 1)] - B_read[int2(floor_coord.x, floor_coord.y + 1)];
-    f11 = Tex[int2(floor_coord.x + 1, floor_coord.y + 1)] - B_read[int2(floor_coord.x + 1, floor_coord.y + 1)];
-    
-    // 计算这4个点的速度分量的最小/最大值，用于后续的回退检查
-    f_min = min(min(f00, f10), min(f01, f11));
-    f_max = max(max(f00, f10), max(f01, f11));
+
+    int2 coords = id.xy;
+
+    float2 dist_vec = coords - center;
+    float dist = length(dist_vec);
+    float h = 0;
+    float foam = 0;
+    if (dist < waveRadius)
+    {
+        h += maxHeight * (1.0 - dist / waveRadius);
+        foam += maxHeight * (1.0 - dist / (waveRadius*0.1));
+        //B_write[coords] = 10 * (1.0 - dist / waveRadius);
+    }
+    float b_result = B_read[coords];
+    if(coords.x <= 1)b_result = B_read[coords + int2(1, 0)];
+    if(coords.x >= size.x - 1)b_result = B_read[coords - int2(1, 0)];
+    if(coords.y <= 1)b_result = B_read[coords + int2(0, 1)];
+    if(coords.y >= size.y - 1)b_result = B_read[coords - int2(0, 1)];
+    H_write[coords] = max(b_result, h);
+    Foam_write[coords] = 0;
+
+    // --- 初始化速度场为零 ---
+    Velocity_write[coords] = float2(0.0, 0.0);
 }
+
 [numthreads(8,8,1)]
 void Advect(uint3 id : SV_DispatchThreadID)
 {
@@ -126,6 +111,7 @@ void Advect(uint3 id : SV_DispatchThreadID)
     if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
     {
         Velocity_write[coords] = Velocity_read[coords];
+        H_write[coords] = H_read[coords];
         return;
     }
 
@@ -139,6 +125,7 @@ void Advect(uint3 id : SV_DispatchThreadID)
 
     // 计算上一时间步的粒子位置 (出发点)
     float2 pos_vel_pre = uv_pos - vel_vel * dt / (float2)size;
+    float2 pos_vel_Fast = uv_pos - vel_vel * dt * 2 / (float2)size;
 
     //获取插值邻域和速度边界 ---
     float2 v00, v10, v01, v11, vel_min, vel_max;
@@ -146,7 +133,7 @@ void Advect(uint3 id : SV_DispatchThreadID)
 
     // 1. 半拉格朗日法的结果
     float2 vel_sl = Velocity_read.SampleLevel(my_Linear_Clamp_sampler, pos_vel_pre, 0);
-    // 2. 修正麦克马克法的结果
+    // 2. 修正MacCormack法的结果
     // a. 预测步：结果就是半拉格朗日的结果 (vel_sl_result)
     // b. 校正步：
     //    从出发点，用预测的速度向前走一步，得到一个中间位置
@@ -155,50 +142,43 @@ void Advect(uint3 id : SV_DispatchThreadID)
     //    将误差的一半加回到预测值上，得到修正后的速度
     float2 vel_mac = vel_sl + 0.5 * error * (float2)size / dt;
     //执行回退检查与最终赋值 ---
-    // 检查麦克马克的结果是否超出了其插值邻域的物理边界
+    // 检查MacCormack的结果是否超出了其插值邻域的物理边界
     bool is_in_bounds = all(vel_mac >= vel_min) && all(vel_mac <= vel_max);
     float2 final_velocity = is_in_bounds ? vel_mac : vel_sl;
 
+    //Foam
+    float foam_result = Foam_read.SampleLevel(my_Linear_Clamp_sampler, pos_vel_Fast, 0);
+
 
     Velocity_write[coords] = final_velocity;     
+    H_write[coords] = H_read[coords];
+    Foam_write[coords] = foam_result;
     //Velocity_write[coords] = Velocity_read[coords];  
        
 }
-
-#define USE_FiniteDifferenceGrid
-#define OvershootingReduction
 
 [numthreads(8,8,1)]
 void SolveDivergence(uint3 id : SV_DispatchThreadID)
 {
     int2 coords = id.xy;
-    // 忽略边界一圈的像素，因为计算需要邻居信息
-    if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
+    // 忽略边界一圈的像素
+    if(coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
     {
         H_write[coords] = H_read[coords];
         return;
     }
 
     float h_center = H_read[coords] - B_read[coords];
-    float2 vel_center = Velocity_read[coords];
-
     float h_right = H_read[coords + int2(1, 0)] - B_read[coords + int2(1, 0)];
-    float2 vel_right = Velocity_read[coords + int2(1, 0)];
-    
     float h_left = H_read[coords - int2(1, 0)] - B_read[coords - int2(1, 0)];
-    float2 vel_left = Velocity_read[coords - int2(1, 0)];    
-
     float h_top = H_read[coords + int2(0, 1)] - B_read[coords + int2(0, 1)];
-    float2 vel_top = Velocity_read[coords + int2(0, 1)];    
-
     float h_down = H_read[coords - int2(0, 1)] - B_read[coords - int2(0, 1)];
-    float2 vel_down = Velocity_read[coords - int2(0, 1)];
 
     //网格差分
-    float fxR = vel_center.x;
-    float fxL = vel_left.x;    	
-    float fyT = vel_center.y; 
-    float fyB = vel_down.y;
+    float fxR = Velocity_read[coords].x;
+    float fxL = Velocity_read[coords - int2(1, 0)].x;    	
+    float fyT = Velocity_read[coords].y; 
+    float fyB = Velocity_read[coords - int2(0, 1)].y;
 
     float hR = (fxR <= 0) ? h_right : h_center;
     float hL = (fxL >  0) ? h_left  : h_center;    
@@ -220,6 +200,35 @@ void SolveDivergence(uint3 id : SV_DispatchThreadID)
     float edgeLimit = dx * 2;
     float a_edge = 0.25;  
     H_write[coords] = newH + B_read[coords];
+
+    float eta_center = H_read[coords];
+    float eta_right = H_read[coords + int2(1, 0)];
+    float eta_left = H_read[coords - int2(1, 0)];
+    float eta_top = H_read[coords + int2(0, 1)];
+    float eta_bottom = H_read[coords - int2(0, 1)];
+    float x = maxAbs(eta_right - eta_center, eta_center - eta_left)/dx;
+    float y = maxAbs(eta_top - eta_center, eta_center - eta_bottom)/dy;
+
+    float aminSplash = 0.4;
+    float vminSplash = 0.1;
+    float lminSplash = -0.4;
+    float foam_result = Foam_read[coords];
+    bool isSplash0 = sqrt(x*x + y*y) > aminSplash * g * dt/dx;
+    bool isSplash1 = (newH + B_read[coords])- H_read[coords] > vminSplash * dt;
+    bool isSplash2 = (eta_right + eta_left + eta_top + eta_bottom - 4*eta_center)/dt*dt < lminSplash;
+
+    if(isSplash2 || isSplash1 || isSplash0)
+    {
+        foam_result += 1;
+    }
+
+
+    float b_center = B_read[coords];
+    float b_right = B_read[coords + int2(1, 0)];
+    float b_left = B_read[coords - int2(1, 0)];
+    float b_top = B_read[coords + int2(0, 1)];
+    float b_bottom = B_read[coords - int2(0, 1)];
+    Foam_write[coords] = foam_result * 0.995;
 }
 
 [numthreads(8,8,1)]
@@ -227,11 +236,12 @@ void SolvePressure(uint3 id : SV_DispatchThreadID)
 {
     int2 coords = id.xy;
     // 忽略边界
-    if (coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
+    if(coords.x <= 1 || coords.y <= 1 || coords.x >= size.x - 1 || coords.y >= size.y - 1)
     {
         Velocity_write[coords] = Velocity_read[coords];
         return;
     }
+
     float2 vel_center = Velocity_read[coords];
     
     float b_center = B_read[coords];
@@ -281,24 +291,58 @@ void ApplyBoundary(uint3 id : SV_DispatchThreadID)
     float h = H_read[coords];
     float2 uv = Velocity_read[coords];
 
-    if (coords.x <= 0) {
+    if (coords.x <= 1) 
+    {
         uv.x = 0;
+        h = H_read[coords + int2(1, 0)];          
     }
-    if (coords.x >= size.x - 2) {
+    if (coords.x >= size.x - 1) {
         uv.x = 0;
+        h = H_read[coords - int2(1, 0)];
     }
-    if (coords.y <= 0) {
+    if (coords.y <= 1) {
         uv.y = 0;
+        h = H_read[coords + int2(0, 1)];
     }
-    if (coords.y >= size.y - 2) 
+    if (coords.y >= size.y - 1) 
     {
         uv.y = 0;
+        h = H_read[coords - int2(0, 1)];
     }
 
-
-    H_write[coords] = H_read[coords];
+    H_write[coords] = h;
     Velocity_write[coords] = uv;
+}
 
+
+[numthreads(8,8,1)]
+void CalculateFoam(uint3 id : SV_DispatchThreadID)
+{
+    int2 coords = id.xy;
+    if (coords.x >= size.x - 1 || coords.y >= size.y - 1) return;
+
+    float eta_center = H_read[coords];
+    float eta_right = H_read[coords + int2(1, 0)];
+    float eta_left = H_read[coords - int2(1, 0)];
+    float eta_top = H_read[coords + int2(0, 1)];
+    float eta_bottom = H_read[coords - int2(0, 1)];
+    float x = maxAbs(eta_right - eta_center, eta_center - eta_left)/dx;
+    float y = maxAbs(eta_top - eta_center, eta_center - eta_bottom)/dy;
+
+    float aminSplash = 0.45;
+    float foam_result = Foam_read[coords];
+
+    if(sqrt(x*x + y*y) > aminSplash * g * dt/dx)
+    {
+        foam_result += 1;
+    }
+
+    float b_center = B_read[coords];
+    float b_right = B_read[coords + int2(1, 0)];
+    float b_left = B_read[coords - int2(1, 0)];
+    float b_top = B_read[coords + int2(0, 1)];
+    float b_bottom = B_read[coords - int2(0, 1)];
+    Foam_write[coords] = foam_result * 0.9;
 }
 
 [numthreads(8,8,1)]
@@ -339,8 +383,8 @@ void InjectWater(uint3 id : SV_DispatchThreadID)
 // 每个线程组 (8x8) 会有自己的一块 8x12 大小的共享内存
 groupshared float shared_H_Horizontal[GROUP_SIZE_Y][SHARED_DATA_WIDTH];
 //static const float weights[5] = {0.05,0.1, 0.7, 0.1,0.05};
-static const float weights[3] = {0.05, 0.9, 0.05};
-//static const float weights[5] = {0,0, 1, 0,0};
+//static const float weights[3] = {0.1, 0.8, 0.1};
+static const float weights[5] = {0,0, 1, 0,0};
 [numthreads(GROUP_SIZE_X, GROUP_SIZE_Y, 1)]
 void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {

@@ -7,6 +7,7 @@ public class SetLight : MonoBehaviour
 {
     // Start is called before the first frame update
     public Material material;
+    public Material material2;
     void Start()
     {
         Light light = GetComponent<Light>();
@@ -16,5 +17,6 @@ public class SetLight : MonoBehaviour
     void Update()
     {
         material.SetVector("_CLightDir", transform.forward);
+        material2.SetVector("_CLightDir", transform.forward);
     }
 }

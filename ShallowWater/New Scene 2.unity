@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0, g: 0, b: 0, a: 1}
+  m_IndirectSpecularColor: {r: 3882.061, g: 3497.0884, b: 3594.8872, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -686,7 +686,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c0d20823e5776614e8888327d5174d36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  captureCamera: {fileID: 956554299}
 --- !u!1 &1058449744
 GameObject:
   m_ObjectHideFlags: 0
@@ -720,11 +719,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   MeshVertexSize: 32
-  SceneDepthRTSize: 512
   SimulationSize: 512
+  loopCount: 2
   dx: 0.5
-  g: 9.81
   dt: 0.05
+  g: 9.81
+  SceneDepthRTSize: 512
   waveRadius: 60
   maxHeight: 0
   slopeHeight: 0
@@ -980,8 +980,7 @@ MonoBehaviour:
         layerMask:
           serializedVersion: 2
           m_Bits: 0
-        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e,
-          type: 2}
+        depth2HeightMat: {fileID: 2100000, guid: ace399f629c338a4ba2cb38d04c2fc1e, type: 2}
 --- !u!4 &1286623295
 Transform:
   m_ObjectHideFlags: 0
@@ -1098,7 +1097,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 1, z: 0}
-  m_LocalScale: {x: 3.2, y: 3.2, z: 3.2}
+  m_LocalScale: {x: 3.3, y: 3.3, z: 3.3}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 0}
@@ -1117,7 +1116,7 @@ GameObject:
   - component: {fileID: 1503271604}
   - component: {fileID: 1503271603}
   m_Layer: 4
-  m_Name: injectWater
+  m_Name: InjectWater
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -1221,8 +1220,8 @@ Transform:
   m_GameObject: {fileID: 1503271602}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 0.99995625, z: -0, w: 0.009357372}
-  m_LocalPosition: {x: -0.98, y: 4.12, z: -12.55}
-  m_LocalScale: {x: 8.500376, y: 2.3182, z: 2.3182}
+  m_LocalPosition: {x: -0.98, y: 2.32, z: -12.55}
+  m_LocalScale: {x: 7.031166, y: 1.0454155, z: 2.3182}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -1326,7 +1325,7 @@ Transform:
   m_GameObject: {fileID: 1558391359}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -31.39, y: 3.99, z: -6.07}
+  m_LocalPosition: {x: -32.332, y: 3.99, z: -5.655}
   m_LocalScale: {x: 1, y: 2.5480144, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []

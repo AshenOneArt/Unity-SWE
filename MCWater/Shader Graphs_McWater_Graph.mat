@@ -61,6 +61,10 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _Foam:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _H:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
@@ -99,7 +103,7 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _AbsorptionStrength: 60
+    - _AbsorptionStrength: 40
     - _AddPrecomputedVelocity: 0
     - _AlphaCutoffEnable: 0
     - _AlphaDstBlend: 10
@@ -118,10 +122,11 @@ Material:
     - _EnableSimu: 1
     - _ExcludeFromTUAndAA: 0
     - _Float: 0.76
+    - _Foam_1: 0.5
     - _LightColorIntensity: 0.01
     - _LightMM: 0
     - _MaxDistance: 10
-    - _NormalS: 0.15
+    - _NormalS: 0.1
     - _OpaqueCullMode: 2
     - _PhaseG: 0.6
     - _RayTracing: 0
@@ -131,7 +136,7 @@ Material:
     - _RenderQueueType: 4
     - _RequireSplitLighting: 0
     - _SampleCount: 2
-    - _ScatterStrength: 6000
+    - _ScatterStrength: 40000
     - _ShadowDitherDepth: 0.7
     - _Size: 10
     - _SrcBlend: 1
@@ -146,12 +151,12 @@ Material:
     - _StencilWriteMaskGBuffer: 15
     - _StencilWriteMaskMV: 41
     - _SupportDecals: 1
-    - _SurNormal: 2
+    - _SurNormal: 1
     - _SurfaceType: 1
     - _Tess: 60
     - _TessellationBackFaceCullEpsilon: -0.25
-    - _TessellationFactorMaxDistance: 200
-    - _TessellationFactorMinDistance: 0
+    - _TessellationFactorMaxDistance: 400
+    - _TessellationFactorMinDistance: 200
     - _TessellationFactorTriangleSize: 100
     - _TessellationMaxDisplacement: 0.01
     - _TessellationMode: 0
@@ -168,17 +173,17 @@ Material:
     - _ZTestGBuffer: 4
     - _ZTestTransparent: 4
     - _ZWrite: 1
-    - _delta: 0.001
+    - _delta: 0.005
     - _largeWaveScale: 400
     - _nomralDistance: 200
     - _normalDistanceSoftness: 0.4
     m_Colors:
     - _Absorption: {r: 0, g: 0, b: 0, a: 0}
-    - _AbsorptionC: {r: 1, g: 0.526, b: 0.57711756, a: 1}
+    - _AbsorptionC: {r: 0.72, g: 0.8089411, b: 1, a: 1}
     - _AmbientL: {r: 0, g: 0, b: 0, a: 0}
     - _AmbientLC: {r: 0, g: 0, b: 0, a: 0}
     - _CLightColor: {r: 1, g: 1, b: 1, a: 1}
-    - _CLightDir: {r: 0, g: -0.50994253, b: 0.8602085, a: 0}
+    - _CLightDir: {r: 0, g: -0.5000001, b: 0.8660253, a: 0}
     - _DirectL: {r: 0, g: 0, b: 0, a: 0}
     - _DirectLC: {r: 1, g: 1, b: 1, a: 0}
     - _DoubleSidedConstants: {r: 1, g: 1, b: -1, a: 0}
@@ -186,5 +191,6 @@ Material:
     - _LightColor: {r: 0.49865216, g: 0.49865216, b: 0.49865216, a: 0}
     - _LightDir: {r: 0, g: 0, b: 0, a: 0}
     - _Scatter: {r: 0, g: 0, b: 0, a: 0}
-    - _ScatterC: {r: 0.14784, g: 0.4071875, b: 0.44799998, a: 0}
+    - _ScatterC: {r: 0.27058825, g: 0.25883317, b: 0.12717648, a: 0}
+    - _Vector3: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []

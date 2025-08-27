@@ -177,7 +177,7 @@ float4 WaterVolumetrics(
         // Direct and indirect lighting
         float3 directLighting = LightColor * phaseScatter * shadowValue;
         //阴影并不会完全屏蔽掉直射光对散射的贡献，依然能从阴影的周围散射部分光量，所以加入部分来自直射光的间接光
-        float3 indirectLighting = indirectLightColor.rgb * ambientAbsorbance * 0.1;
+        float3 indirectLighting = indirectLightColor.rgb * ambientAbsorbance * 0.25;
         //*ambientAbsorbance
         
         //总合成
