@@ -74,14 +74,6 @@ void GetNeighborhood_float2(Texture2D<float2> Tex,float2 uv_coord, out float2 v0
     v_max = max(max(v00, v10), max(v01, v11));
 }
 
-float BlueNoiseSample(int2 p)
-{
-    // 回退：无贴图时用轻量哈希（不是蓝噪，但能用）
-    uint n = asuint(p.x*1973 + p.y*9277);
-    n ^= (n<<13); n ^= (n>>17); n ^= (n<<5);
-    return (n & 0x00FFFFFF) / 16777215.0;  // [0,1]
-}
-
 [numthreads(8,8,1)]
 void InitWater(uint3 id : SV_DispatchThreadID)
 {
@@ -295,8 +287,6 @@ void ApplyBoundary(uint3 id : SV_DispatchThreadID)
     int2 coords = id.xy;
     if (coords.x >= size.x|| coords.y >= size.y) return;
 
-    // --- 为同位网格应用反射边界条件 ---
-    //交错网格，上右存在中心，左存左边，下存下边，加上goast边界，因此上右-2
     float h = H_read[coords];
     float2 uv = Velocity_read[coords];
 
