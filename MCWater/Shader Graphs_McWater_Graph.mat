@@ -24,8 +24,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Shader Graphs_McWater_Graph
-  m_Shader: {fileID: -6465566751694194690, guid: 72c2aa562a6caa647bfe784970f77ac4,
-    type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: 72c2aa562a6caa647bfe784970f77ac4, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords:
@@ -127,7 +126,7 @@ Material:
     - _LightColorIntensity: 0.01
     - _LightMM: 0
     - _MaxDistance: 10
-    - _NormalS: 0.1
+    - _NormalS: 0.5
     - _OpaqueCullMode: 2
     - _PhaseG: 0.6
     - _RayTracing: 0
@@ -174,7 +173,7 @@ Material:
     - _ZTestGBuffer: 4
     - _ZTestTransparent: 4
     - _ZWrite: 1
-    - _delta: 0.005
+    - _delta: 0.002
     - _largeWaveScale: 400
     - _nomralDistance: 200
     - _normalDistanceSoftness: 0.4

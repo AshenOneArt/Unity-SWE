@@ -217,9 +217,9 @@ void SolveDivergence(uint3 id : SV_DispatchThreadID)
     float x = maxAbs(eta_right - eta_center, eta_center - eta_left)/dx;
     float y = maxAbs(eta_top - eta_center, eta_center - eta_bottom)/dy;
 
-    float aminSplash = 0.6;
-    float vminSplash = 0.4;
-    float lminSplash = -0.3;
+    float aminSplash = 0.5;
+    float vminSplash = 0.1;
+    float lminSplash = -0.6;
     float foam_result = Foam_read[coords];
     bool isSplash0 = sqrt(x*x + y*y) > aminSplash * g * dt/dx;
     bool isSplash1 = (newH + B_read[coords])- H_read[coords] > vminSplash * dt;
@@ -237,7 +237,7 @@ void SolveDivergence(uint3 id : SV_DispatchThreadID)
     float b_left = B_read[coords - int2(1, 0)];
     float b_top = B_read[coords + int2(0, 1)];
     float b_bottom = B_read[coords - int2(0, 1)];
-    Foam_write[coords] = foam_result * 0.993;
+    Foam_write[coords] = foam_result * 0.996;
 }
 
 [numthreads(8,8,1)]
@@ -392,8 +392,8 @@ void InjectWater(uint3 id : SV_DispatchThreadID)
 // 每个线程组 (8x8) 会有自己的一块 8x12 大小的共享内存
 groupshared float shared_H_Horizontal[GROUP_SIZE_Y][SHARED_DATA_WIDTH];
 //static const float weights[5] = {0.05,0.1, 0.7, 0.1,0.05};
-//static const float weights[3] = {0.1, 0.8, 0.1};
-static const float weights[5] = {0,0, 1, 0,0};
+static const float weights[3] = {0.1, 0.8, 0.1};
+//static const float weights[5] = {0,0, 1, 0,0};
 [numthreads(GROUP_SIZE_X, GROUP_SIZE_Y, 1)]
 void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 groupThreadID : SV_GroupThreadID, uint3 groupID : SV_GroupID)
 {
