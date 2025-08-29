@@ -400,8 +400,7 @@ void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 
     
     // 每个线程负责从全局内存加载一个像素到共享内存中
     // 我们需要加载一个 12x8 的数据块，但只有 8x8=64 个线程。
-    // 所以我们让一部分线程加载两次来填满整个共享内存块。
-    // 这是一个常见的填充策略。
+    // 所以让一部分线程加载两次来填满整个共享内存块。
     int loadX1 = startX + localCoords.x;
     int loadX2 = startX + localCoords.x + GROUP_SIZE_X;
     int loadY = startY + localCoords.y;
@@ -423,9 +422,6 @@ void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 
     }
     
     // --- 2. 同步线程 ---
-    
-    // 设置一个内存屏障，确保组内所有线程都完成了对共享内存的写入操作后，
-    // 才开始下面的读取和计算。这是至关重要的一步！
     GroupMemoryBarrierWithGroupSync();
 
     // --- 3. 从共享内存读取数据并进行计算 ---
@@ -434,13 +430,8 @@ void GaussianBlurHorizontal(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 
     if (globalCoords.x < size.x && globalCoords.y < size.y)
     {
         float result = 0.0;
-        
-        // 5x5 高斯核的权重 (sigma ≈ 1.0)              
+                
         float weightSum = 0.0;
-        // 计算时，我们从共享内存中取数据。
-        // localCoords.x 是线程在 0-7 范围内的索引。
-        // 但我们的数据块包含了左边2个像素的 "halo" 区域。
-        // 所以线程 localCoords.x 对应的中心像素位于共享内存的 localCoords.x + KERNEL_RADIUS 的位置。
         [unroll]
         for (int i = 0; i < KERNEL_SIZE; i++)
         {
@@ -500,12 +491,10 @@ void GaussianBlurVertical(uint3 dispatchThreadID : SV_DispatchThreadID, uint3 gr
     if (globalCoords.x < size.x && globalCoords.y < size.y)
     {
         float result = 0.0;    
-        // 计算时，从共享内存中沿 Y 轴取数据
-        // 线程 localCoords.y 对应的中心像素位于共享内存的 localCoords.y + KERNEL_RADIUS 的位置
         [unroll]
         for (int i = 0; i < KERNEL_SIZE; i++)
         {
-            int offset = i - KERNEL_RADIUS; // 偏移量: -2, -1, 0, 1, 2
+            int offset = i - KERNEL_RADIUS;
             result += shared_H_Vertical[localCoords.y + KERNEL_RADIUS + offset][localCoords.x] * weights[i];
         }
         
